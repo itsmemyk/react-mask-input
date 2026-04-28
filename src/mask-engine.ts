@@ -1,374 +1,282 @@
 import {
-  CaretPositionConfig,
-  ConformConfig,
+  ApplyMaskOptions,
+  CaretAdjustConfig,
+  DEFAULT_PLACEHOLDER_CHAR,
   Mask,
-  MaskArray,
-  MaskFunction,
-  MaskFunctionConfig,
-  PLACEHOLDER,
+  MaskFactory,
+  MaskPattern,
+  MaskSegment,
 } from "./types";
 
-const EMPTY_STRING = "";
+type AnnotatedChar = { ch: string; fresh: boolean };
 
-type CharMeta = { char: string; isNew: boolean };
-
-export function convertMaskToPlaceholder(
-  mask: MaskArray = [],
-  placeholderChar = PLACEHOLDER,
-) {
-  return mask
-    .map((char) => (char instanceof RegExp ? placeholderChar : char))
+export function buildPlaceholder(
+  pattern: MaskPattern = [],
+  fillChar = DEFAULT_PLACEHOLDER_CHAR,
+): string {
+  return pattern
+    .map((seg) => (seg instanceof RegExp ? fillChar : (seg as string)))
     .join("");
 }
 
-export function coerceValue(value?: string | number | null): string {
+export function toInputString(value?: string | number | null): string {
+  if (value == null) return "";
   if (typeof value === "string") return value;
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  if (value === undefined || value === null) return EMPTY_STRING;
+  if (typeof value === "number" && isFinite(value)) return String(value);
   throw new Error(
-    "The 'value' provided to MaskedInput needs to be a string or a number. Received: " +
-      JSON.stringify(value),
+    `MaskedInput: 'value' must be a string or finite number, got: ${JSON.stringify(value)}`,
   );
 }
 
-export function resolveMask(
+export function resolveMaskPattern(
   mask: Mask,
-  rawValue: string,
-  config?: MaskFunctionConfig,
-): MaskArray | false {
+  value: string,
+  ctx?: Parameters<MaskFactory>[1],
+): MaskPattern | false {
   if (mask === false) return false;
-  if (Array.isArray(mask)) return mask;
-  return (mask as MaskFunction)(rawValue, config);
+  if (Array.isArray(mask)) return mask as MaskPattern;
+  return (mask as MaskFactory)(value, ctx);
 }
 
-/**
- * Pads the deleted range with placeholder chars to preserve character positions
- * on deletion when keepCharPositions is enabled.
- */
-function compensateForDeletion(
-  rawValue: string,
-  placeholder: string,
-  placeholderChar: string,
-  indexOfFirstChange: number,
-  indexOfLastChange: number,
+function padDeletedSlots(
+  input: string,
+  template: string,
+  fillChar: string,
+  editStart: number,
+  editEnd: number,
 ): string {
-  let compensatoryPlaceholder = EMPTY_STRING;
-
-  for (let i = indexOfFirstChange; i < indexOfLastChange; i++) {
-    if (placeholder[i] === placeholderChar) {
-      compensatoryPlaceholder += placeholderChar;
-    }
+  let padding = "";
+  for (let i = editStart; i < editEnd; i++) {
+    if (template[i] === fillChar) padding += fillChar;
   }
-
-  return (
-    rawValue.slice(0, indexOfFirstChange) +
-    compensatoryPlaceholder +
-    rawValue.slice(indexOfFirstChange, rawValue.length)
-  );
+  return input.slice(0, editStart) + padding + input.slice(editStart);
 }
 
-/**
- * Builds the annotated `CharMeta[]` array from rawValue and removes characters
- * that match literal positions in the placeholder.
- */
-function stripLiteralChars(
-  rawValueArr: CharMeta[],
-  placeholder: string,
-  placeholderChar: string,
-  indexOfFirstChange: number,
-  lengthDifference: number,
-  previousConformedValueLength: number,
-  maskLength: number,
-): CharMeta[] {
-  for (let i = rawValueArr.length - 1; i >= 0; i--) {
-    const char = rawValueArr[i]?.char;
+function extractUserChars(
+  input: string,
+  template: string,
+  fillChar: string,
+  editStart: number,
+  delta: number,
+  prevLen: number,
+  patternLen: number,
+): AnnotatedChar[] {
+  const chars: AnnotatedChar[] = input.split("").map((ch, i) => ({
+    ch,
+    fresh: i >= editStart && i < editStart + Math.abs(delta),
+  }));
 
-    if (char !== placeholderChar) {
-      const shouldOffset =
-        i >= indexOfFirstChange && previousConformedValueLength === maskLength;
-      if (char === placeholder[shouldOffset ? i - lengthDifference : i]) {
-        rawValueArr.splice(i, 1);
-      }
-    }
+  for (let i = chars.length - 1; i >= 0; i--) {
+    const { ch } = chars[i]!;
+    if (ch === fillChar) continue;
+    const useOffset = i >= editStart && prevLen === patternLen;
+    const templatePos = useOffset ? i - delta : i;
+    if (template[templatePos] === ch) chars.splice(i, 1);
   }
 
-  return rawValueArr;
+  return chars;
 }
 
-/**
- * Finds the index of the next placeholder slot in the remaining rawValueArr,
- * used inside the keepCharPositions+addition branch.
- */
-function findNextPlaceholderIndex(
-  rawValueArr: CharMeta[],
-  placeholderChar: string,
-): number | null {
-  for (let j = 0; j < rawValueArr.length; j++) {
-    const nextChar = rawValueArr[j];
-    if (nextChar.char !== placeholderChar && nextChar.isNew === false) {
-      break;
-    }
-    if (nextChar.char === placeholderChar) {
-      return j;
-    }
+function nextFillSlotIndex(chars: AnnotatedChar[], fillChar: string): number {
+  for (let i = 0; i < chars.length; i++) {
+    const { ch, fresh } = chars[i]!;
+    if (ch !== fillChar && !fresh) break;
+    if (ch === fillChar) return i;
   }
-  return null;
+  return -1;
 }
 
-export function conformToMask(
-  rawValue: string = EMPTY_STRING,
-  mask: MaskArray,
-  config: ConformConfig = {},
+export function applyMask(
+  rawInput = "",
+  pattern: MaskPattern,
+  opts: ApplyMaskOptions = {},
 ): string {
-  const guide = config.guide ?? true;
-  const previousConformedValue = config.previousConformedValue ?? EMPTY_STRING;
-  const placeholderChar = config.placeholderChar ?? PLACEHOLDER;
-  const placeholder =
-    config.placeholder ?? convertMaskToPlaceholder(mask, placeholderChar);
-  const currentCaretPosition = config.currentCaretPosition ?? 0;
-  const keepCharPositions = config.keepCharPositions;
-  const suppressGuide =
-    guide === false && previousConformedValue !== EMPTY_STRING;
-  const rawValueLength = rawValue.length;
-  const previousConformedValueLength = previousConformedValue.length;
-  const placeholderLength = placeholder.length;
-  const maskLength = mask.length;
-  const lengthDifference = rawValueLength - previousConformedValueLength;
-  const isAddition = lengthDifference > 0;
-  const indexOfFirstChange =
-    currentCaretPosition + (isAddition ? -lengthDifference : 0);
-  const indexOfLastChange = indexOfFirstChange + Math.abs(lengthDifference);
+  const fillChar = opts.placeholderChar ?? DEFAULT_PLACEHOLDER_CHAR;
+  const prevValue = opts.previousConformedValue ?? "";
+  const guide = opts.guide ?? true;
+  const template = opts.placeholder ?? buildPlaceholder(pattern, fillChar);
+  const caretPos = opts.currentCaretPosition ?? 0;
+  const keepPositions = opts.keepCharPositions ?? false;
 
-  if (keepCharPositions && !isAddition) {
-    rawValue = compensateForDeletion(
-      rawValue,
-      placeholder,
-      placeholderChar,
-      indexOfFirstChange,
-      indexOfLastChange,
+  const delta = rawInput.length - prevValue.length;
+  const isAdding = delta > 0;
+  const editStart = caretPos + (isAdding ? -delta : 0);
+  const suppressGuide = !guide && prevValue !== "";
+
+  let workingInput = rawInput;
+  if (keepPositions && !isAdding) {
+    workingInput = padDeletedSlots(
+      rawInput,
+      template,
+      fillChar,
+      editStart,
+      editStart + Math.abs(delta),
     );
   }
 
-  const rawValueArr = stripLiteralChars(
-    rawValue.split(EMPTY_STRING).map((char, i) => ({
-      char,
-      isNew: i >= indexOfFirstChange && i < indexOfLastChange,
-    })),
-    placeholder,
-    placeholderChar,
-    indexOfFirstChange,
-    lengthDifference,
-    previousConformedValueLength,
-    maskLength,
+  const chars = extractUserChars(
+    workingInput,
+    template,
+    fillChar,
+    editStart,
+    delta,
+    prevValue.length,
+    pattern.length,
   );
 
-  let conformedValue = EMPTY_STRING;
+  let output = "";
 
-  outer: for (let i = 0; i < placeholderLength; i++) {
-    const charInPlaceholder = placeholder[i];
+  outer: for (let slot = 0; slot < template.length; slot++) {
+    const slotCh = template[slot];
 
-    if (charInPlaceholder === placeholderChar) {
-      if (rawValueArr.length > 0) {
-        while (rawValueArr.length > 0) {
-          const { char, isNew } = rawValueArr.shift()!;
+    if (slotCh !== fillChar) {
+      output += slotCh;
+      continue;
+    }
 
-          if (char === placeholderChar && suppressGuide !== true) {
-            conformedValue += placeholderChar;
-            continue outer;
+    while (chars.length > 0) {
+      const { ch, fresh } = chars.shift()!;
+
+      if (ch === fillChar && !suppressGuide) {
+        output += fillChar;
+        continue outer;
+      }
+
+      const rule = pattern[slot] as MaskSegment;
+      if (rule instanceof RegExp && rule.test(ch)) {
+        if (keepPositions && fresh && prevValue !== "" && guide && isAdding) {
+          const fillIdx = nextFillSlotIndex(chars, fillChar);
+          if (fillIdx !== -1) {
+            output += ch;
+            chars.splice(fillIdx, 1);
+          } else {
+            slot--;
           }
-
-          const maskRule = mask[i];
-          if (maskRule instanceof RegExp && maskRule.test(char)) {
-            if (
-              keepCharPositions &&
-              isNew !== false &&
-              previousConformedValue !== EMPTY_STRING &&
-              guide !== false &&
-              isAddition
-            ) {
-              const indexOfNextPlaceholder = findNextPlaceholderIndex(
-                rawValueArr,
-                placeholderChar,
-              );
-
-              if (indexOfNextPlaceholder !== null) {
-                conformedValue += char;
-                rawValueArr.splice(indexOfNextPlaceholder, 1);
-              } else {
-                i--;
-              }
-            } else {
-              conformedValue += char;
-            }
-
-            continue outer;
-          }
+        } else {
+          output += ch;
         }
+        continue outer;
       }
+    }
 
-      if (suppressGuide === false) {
-        conformedValue += placeholder.slice(i, placeholderLength);
-        break;
-      }
-
+    if (!suppressGuide) {
+      output += template.slice(slot);
       break;
-    } else {
-      conformedValue += charInPlaceholder;
     }
+    break;
   }
 
-  if (suppressGuide && !isAddition) {
-    let lastFilledIndex: number | null = null;
-
-    for (let i = 0; i < conformedValue.length; i++) {
-      if (placeholder[i] === placeholderChar) {
-        lastFilledIndex = i;
-      }
+  if (suppressGuide && !isAdding) {
+    let lastUserIdx = -1;
+    for (let i = 0; i < output.length; i++) {
+      if (template[i] === fillChar) lastUserIdx = i;
     }
-
-    conformedValue =
-      lastFilledIndex !== null
-        ? conformedValue.slice(0, lastFilledIndex + 1)
-        : EMPTY_STRING;
+    output = lastUserIdx === -1 ? "" : output.slice(0, lastUserIdx + 1);
   }
 
-  return conformedValue;
+  return output;
 }
 
-/**
- * Encapsulates: normalized char filtering, literal count comparison,
- * target char resolution, and match scanning for caret positioning.
- */
-function findTargetCaretPosition(
-  conformedValue: string,
+function locateTargetCaret(
+  conformed: string,
   rawValue: string,
-  placeholder: string,
-  previousPlaceholder: string,
-  placeholderChar: string,
-  currentCaretPosition: number,
-  isAddition: boolean,
-): { caretPosition: number; targetChar?: string } {
-  const rawValueArr = rawValue
-    .slice(0, currentCaretPosition)
-    .split(EMPTY_STRING);
-  const filteredRawValueArr = rawValueArr.filter(
-    (char) => conformedValue.indexOf(char) !== -1,
-  );
+  template: string,
+  prevTemplate: string,
+  fillChar: string,
+  caretPos: number,
+  isAdding: boolean,
+): number {
+  const beforeCaret = rawValue.slice(0, caretPos).split("");
+  const inConformed = beforeCaret.filter((ch) => conformed.includes(ch));
+  let target = inConformed[inConformed.length - 1];
 
-  let targetChar: string | undefined =
-    filteredRawValueArr[filteredRawValueArr.length - 1];
+  const prevLiterals = prevTemplate
+    .slice(0, inConformed.length)
+    .split("")
+    .filter((ch) => ch !== fillChar).length;
+  const currLiterals = template
+    .slice(0, inConformed.length)
+    .split("")
+    .filter((ch) => ch !== fillChar).length;
 
-  const previousLiteralCount = previousPlaceholder
-    .slice(0, filteredRawValueArr.length)
-    .split(EMPTY_STRING)
-    .filter((char) => char !== placeholderChar).length;
-  const placeholderLiteralCount = placeholder
-    .slice(0, filteredRawValueArr.length)
-    .split(EMPTY_STRING)
-    .filter((char) => char !== placeholderChar).length;
-
-  const isTargetEscaped = placeholderLiteralCount !== previousLiteralCount;
-  const isPrevCharSameAsPlaceholder =
-    typeof previousPlaceholder[filteredRawValueArr.length - 1] !==
-      "undefined" &&
-    typeof placeholder[filteredRawValueArr.length - 2] !== "undefined" &&
-    previousPlaceholder[filteredRawValueArr.length - 1] !== placeholderChar &&
-    previousPlaceholder[filteredRawValueArr.length - 1] !==
-      placeholder[filteredRawValueArr.length - 1] &&
-    previousPlaceholder[filteredRawValueArr.length - 1] ===
-      placeholder[filteredRawValueArr.length - 2];
+  const literalShifted = currLiterals !== prevLiterals;
+  const prevCharReused =
+    prevTemplate[inConformed.length - 1] !== undefined &&
+    template[inConformed.length - 2] !== undefined &&
+    prevTemplate[inConformed.length - 1] !== fillChar &&
+    prevTemplate[inConformed.length - 1] !== template[inConformed.length - 1] &&
+    prevTemplate[inConformed.length - 1] === template[inConformed.length - 2];
 
   if (
-    !isAddition &&
-    (isTargetEscaped || isPrevCharSameAsPlaceholder) &&
-    previousLiteralCount > 0 &&
-    placeholder.indexOf(targetChar ?? "") > -1 &&
-    typeof rawValue[currentCaretPosition] !== "undefined"
+    !isAdding &&
+    (literalShifted || prevCharReused) &&
+    prevLiterals > 0 &&
+    template.includes(target ?? "") &&
+    rawValue[caretPos] !== undefined
   ) {
-    targetChar = rawValue[currentCaretPosition];
+    target = rawValue[caretPos];
   }
 
-  const countPrevCharMatches = filteredRawValueArr.filter(
-    (char) => char === targetChar,
-  ).length;
-  const placeholderMatches = placeholder
-    .slice(0, placeholder.indexOf(placeholderChar))
-    .split(EMPTY_STRING)
-    .filter(
-      (char, index) => char === targetChar && rawValue[index] !== char,
-    ).length;
+  const occurrencesBeforeCaret = inConformed.filter((ch) => ch === target).length;
+  const literalOccurrences = template
+    .slice(0, template.indexOf(fillChar))
+    .split("")
+    .filter((ch, i) => ch === target && rawValue[i] !== ch).length;
 
-  const requiredMatches = placeholderMatches + countPrevCharMatches;
+  const required = literalOccurrences + occurrencesBeforeCaret;
+  let found = 0;
+  let pos = 0;
 
-  let encounteredMatches = 0;
-  let caretPosition = 0;
-
-  for (let i = 0; i < conformedValue.length; i++) {
-    const char = conformedValue[i];
-    caretPosition = i + 1;
-
-    if (char === targetChar && ++encounteredMatches >= requiredMatches) {
-      break;
-    }
+  for (let i = 0; i < conformed.length; i++) {
+    pos = i + 1;
+    if (conformed[i] === target && ++found >= required) break;
   }
 
-  return { caretPosition, targetChar };
+  return pos;
 }
 
-export function adjustCaretPosition({
-  previousConformedValue = EMPTY_STRING,
-  previousPlaceholder = EMPTY_STRING,
-  currentCaretPosition = 0,
-  conformedValue,
+export function computeCaretPosition({
+  previousConformedValue: prevValue = "",
+  previousPlaceholder: prevTemplate = "",
+  currentCaretPosition: caretPos = 0,
+  conformedValue: conformed,
   rawValue,
-  placeholderChar,
-  placeholder,
-}: CaretPositionConfig): number {
-  if (currentCaretPosition === 0 || !rawValue.length) {
-    return 0;
-  }
+  placeholderChar: fillChar,
+  placeholder: template,
+}: CaretAdjustConfig): number {
+  if (caretPos === 0 || !rawValue.length) return 0;
 
-  const rawValueLength = rawValue.length;
-  const previousConformedLength = previousConformedValue.length;
-  const placeholderLength = placeholder.length;
-  const editLength = rawValueLength - previousConformedLength;
-  const isAddition = editLength > 0;
-  const isFirstInput = previousConformedLength === 0;
-  const isPartialMultiCharEdit = editLength > 1 && !isAddition && !isFirstInput;
+  const delta = rawValue.length - prevValue.length;
+  const isAdding = delta > 0;
+  const isMultiDelete = delta < -1 && !isAdding && prevValue.length > 0;
 
-  if (isPartialMultiCharEdit) {
-    return currentCaretPosition;
-  }
+  if (isMultiDelete) return caretPos;
 
-  const shouldSetCaretToEnd =
-    isAddition &&
-    (previousConformedValue === conformedValue ||
-      conformedValue === placeholder);
+  const shouldAnchor =
+    isAdding && (prevValue === conformed || conformed === template);
 
-  const caretPosition = shouldSetCaretToEnd
-    ? currentCaretPosition - editLength
-    : findTargetCaretPosition(
-        conformedValue,
+  const rawCaretPos = shouldAnchor
+    ? caretPos - delta
+    : locateTargetCaret(
+        conformed,
         rawValue,
-        placeholder,
-        previousPlaceholder,
-        placeholderChar,
-        currentCaretPosition,
-        isAddition,
-      ).caretPosition;
+        template,
+        prevTemplate,
+        fillChar,
+        caretPos,
+        isAdding,
+      );
 
-  if (isAddition) {
-    for (let i = caretPosition; i <= placeholderLength; i++) {
-      if (placeholder[i] === placeholderChar) return i;
-      if (i === placeholderLength) return caretPosition;
+  if (isAdding) {
+    for (let i = rawCaretPos; i <= template.length; i++) {
+      if (template[i] === fillChar) return i;
+      if (i === template.length) return rawCaretPos;
     }
   } else {
-    for (let i = caretPosition; i >= 0; i--) {
-      if (placeholder[i - 1] === placeholderChar || i === 0) {
-        return i;
-      }
+    for (let i = rawCaretPos; i >= 0; i--) {
+      if (template[i - 1] === fillChar || i === 0) return i;
     }
   }
 
-  return caretPosition;
+  return rawCaretPos;
 }

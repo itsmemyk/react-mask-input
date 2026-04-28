@@ -7,13 +7,13 @@ import {
 } from "react";
 
 import {
-  adjustCaretPosition,
-  coerceValue,
-  conformToMask,
-  convertMaskToPlaceholder,
-  resolveMask,
+  applyMask,
+  buildPlaceholder,
+  computeCaretPosition,
+  resolveMaskPattern,
+  toInputString,
 } from "./mask-engine";
-import { Mask, PLACEHOLDER } from "./types";
+import { DEFAULT_PLACEHOLDER_CHAR, Mask } from "./types";
 
 export interface MaskInputConfig {
   mask: Mask;
@@ -23,142 +23,124 @@ export interface MaskInputConfig {
   showMask?: boolean;
 }
 
-const CARET_DIRECTION = "none";
-const isAndroidDevice =
+const isAndroid =
   typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
-const runInNextFrame =
-  typeof requestAnimationFrame !== "undefined"
-    ? requestAnimationFrame
-    : (cb: () => void) => setTimeout(cb, 0);
 
-function setCaretPosition(inputElement: HTMLInputElement, position: number) {
+const scheduleFrame: (fn: () => void) => void =
+  typeof requestAnimationFrame !== "undefined"
+    ? (fn) => requestAnimationFrame(fn)
+    : (fn) => setTimeout(fn, 0);
+
+function setCaret(el: HTMLInputElement, pos: number) {
   if (
     typeof document === "undefined" ||
-    document.activeElement !== inputElement ||
-    typeof inputElement.setSelectionRange !== "function"
+    document.activeElement !== el ||
+    typeof el.setSelectionRange !== "function"
   ) {
     return;
   }
+  const apply = () => el.setSelectionRange(pos, pos, "none");
+  isAndroid ? scheduleFrame(apply) : apply();
+}
 
-  const setPosition = () =>
-    inputElement.setSelectionRange(position, position, CARET_DIRECTION);
-
-  if (isAndroidDevice) {
-    runInNextFrame(setPosition);
-  } else {
-    setPosition();
-  }
+interface MaskState {
+  lastConformedValue: string;
+  lastPlaceholder: string;
+  lastShowMask: boolean | undefined;
 }
 
 export function useMaskInput(
   value: string | number | null | undefined,
-  {
-    mask,
-    guide = true,
-    placeholderChar = PLACEHOLDER,
-    keepCharPositions,
-    showMask,
-  }: MaskInputConfig,
+  config: MaskInputConfig,
 ) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [maskedValue, setMaskedValue] = useState("");
-  const [updateKey, setUpdateKey] = useState(0);
-  const caretRef = useRef<number>(0);
+  const { mask, guide = true, placeholderChar = DEFAULT_PLACEHOLDER_CHAR, keepCharPositions, showMask } = config;
 
-  const stateRef = useRef({
-    previousConformedValue: "",
-    previousPlaceholder: "",
-    previousShowMask: showMask,
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [displayValue, setDisplayValue] = useState("");
+  const [syncToken, setSyncToken] = useState(0);
+  const pendingCaret = useRef(0);
+
+  const stateRef = useRef<MaskState>({
+    lastConformedValue: "",
+    lastPlaceholder: "",
+    lastShowMask: showMask,
   });
 
-  const update = useCallback(
-    (rawValue?: string | number | null) => {
-      const inputElement = inputRef.current;
-
-      const valueToConform =
-        rawValue === undefined ? (inputElement?.value ?? "") : rawValue;
-
+  const processValue = useCallback(
+    (incoming?: string | number | null) => {
+      const el = inputRef.current;
+      const raw = incoming === undefined ? (el?.value ?? "") : incoming;
       const state = stateRef.current;
-      const showMaskChanged = showMask !== state.previousShowMask;
-      if (valueToConform === state.previousConformedValue && !showMaskChanged)
-        return;
-      state.previousShowMask = showMask;
 
-      const rawValueString = coerceValue(valueToConform);
-      const selectionEnd = inputElement?.selectionEnd ?? rawValueString.length;
-      const previousConformedValue = state.previousConformedValue;
-      const previousPlaceholder = state.previousPlaceholder;
+      const showMaskChanged = showMask !== state.lastShowMask;
+      if (raw === state.lastConformedValue && !showMaskChanged) return;
+      state.lastShowMask = showMask;
 
-      const maskArray = resolveMask(mask, rawValueString, {
-        currentCaretPosition: selectionEnd,
-        previousConformedValue,
+      const rawStr = toInputString(raw);
+      const selectionPos = el?.selectionEnd ?? rawStr.length;
+
+      const resolvedPattern = resolveMaskPattern(mask, rawStr, {
+        currentCaretPosition: selectionPos,
+        previousConformedValue: state.lastConformedValue,
         placeholderChar,
       });
 
-      if (maskArray === false) {
-        state.previousConformedValue = rawValueString;
-        setMaskedValue(rawValueString);
+      if (resolvedPattern === false) {
+        state.lastConformedValue = rawStr;
+        setDisplayValue(rawStr);
         return;
       }
 
-      const placeholder = convertMaskToPlaceholder(maskArray, placeholderChar);
+      const placeholder = buildPlaceholder(resolvedPattern, placeholderChar);
 
-      const conformedValue = conformToMask(rawValueString, maskArray, {
-        previousConformedValue,
+      const conformed = applyMask(rawStr, resolvedPattern, {
+        previousConformedValue: state.lastConformedValue,
         guide,
         placeholderChar,
         placeholder,
-        currentCaretPosition: selectionEnd,
+        currentCaretPosition: selectionPos,
         keepCharPositions,
       });
 
-      const caretPos = adjustCaretPosition({
-        previousConformedValue,
-        previousPlaceholder,
-        conformedValue,
+      const nextCaret = computeCaretPosition({
+        previousConformedValue: state.lastConformedValue,
+        previousPlaceholder: state.lastPlaceholder,
+        conformedValue: conformed,
         placeholder,
-        rawValue: rawValueString,
-        currentCaretPosition: selectionEnd,
+        rawValue: rawStr,
+        currentCaretPosition: selectionPos,
         placeholderChar,
       });
 
-      const maskShown =
-        conformedValue === placeholder && caretPos === 0
-          ? showMask
-            ? placeholder
-            : ""
-          : conformedValue;
+      const isEmpty = conformed === placeholder && nextCaret === 0;
+      const shown = isEmpty ? (showMask ? placeholder : "") : conformed;
 
-      state.previousConformedValue = maskShown;
-      state.previousPlaceholder = placeholder;
+      state.lastConformedValue = shown;
+      state.lastPlaceholder = placeholder;
 
-      setMaskedValue(maskShown);
-      caretRef.current = caretPos;
-      setUpdateKey((k) => k + 1);
+      setDisplayValue(shown);
+      pendingCaret.current = nextCaret;
+      setSyncToken((t) => t + 1);
     },
     [mask, guide, placeholderChar, keepCharPositions, showMask],
   );
 
   useLayoutEffect(() => {
-    const inputElement = inputRef.current;
-    if (inputElement) {
-      setCaretPosition(inputElement, caretRef.current);
-    }
-  }, [updateKey]);
+    const el = inputRef.current;
+    if (el) setCaret(el, pendingCaret.current);
+  }, [syncToken]);
 
   useLayoutEffect(() => {
-    update(value);
-  }, [update, value]);
+    processValue(value);
+  }, [processValue, value]);
 
   const onChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      update(event.target.value);
-      // Sync conformed value back to the event target so that parent
-      // onChange handlers see the conformed value, not the raw browser value.
-      event.target.value = stateRef.current.previousConformedValue;
+    (e: ChangeEvent<HTMLInputElement>) => {
+      processValue(e.target.value);
+      e.target.value = stateRef.current.lastConformedValue;
     },
-    [update],
+    [processValue],
   );
 
-  return { inputRef, maskedValue, onChange };
+  return { inputRef, maskedValue: displayValue, onChange };
 }

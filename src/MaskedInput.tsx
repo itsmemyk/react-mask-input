@@ -11,7 +11,7 @@ import React, {
 
 import "./masked-input.css";
 import { useMaskInput } from "./use-mask-input";
-import { Mask, PLACEHOLDER } from "./types";
+import { DEFAULT_PLACEHOLDER_CHAR, Mask } from "./types";
 
 export type InputComponentProps = InputHTMLAttributes<HTMLInputElement> & {
   ref?: React.Ref<HTMLInputElement | null>;
@@ -98,7 +98,7 @@ export const MaskedInput = React.forwardRef<
   const {
     mask,
     guide = true,
-    placeholderChar = PLACEHOLDER,
+    placeholderChar = DEFAULT_PLACEHOLDER_CHAR,
     keepCharPositions = true,
     showMask: showMaskProp,
     inputComponent: InputComponent,

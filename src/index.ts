@@ -9,11 +9,12 @@ export type {
 export { useMaskInput } from "./use-mask-input";
 export type { MaskInputConfig } from "./use-mask-input";
 
-export { PLACEHOLDER } from "./types";
+export { DEFAULT_PLACEHOLDER_CHAR } from "./types";
 export type {
   Mask,
   MaskArray,
   MaskFunction,
-  MaskFunctionConfig,
-  ConformConfig,
+  MaskFactory,
+  MaskFactoryContext,
+  ApplyMaskOptions,
 } from "./types";

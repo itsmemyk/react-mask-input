@@ -1,21 +1,26 @@
-export const PLACEHOLDER = "_";
+export const DEFAULT_PLACEHOLDER_CHAR = "_";
 
-export type MaskArray = (string | RegExp)[];
+export type MaskSegment = string | RegExp;
+export type MaskPattern = MaskSegment[];
 
-export type MaskFunction = (
-  rawValue: string,
-  config?: MaskFunctionConfig,
-) => MaskArray | false;
+export type MaskFactory = (
+  value: string,
+  ctx?: MaskFactoryContext,
+) => MaskPattern | false;
 
-export type Mask = MaskArray | MaskFunction | false;
+export type Mask = MaskPattern | MaskFactory | false;
 
-export interface MaskFunctionConfig {
+// Convenience aliases for consumers
+export type MaskArray = MaskPattern;
+export type MaskFunction = MaskFactory;
+
+export interface MaskFactoryContext {
   previousConformedValue?: string;
   currentCaretPosition?: number | null;
   placeholderChar?: string;
 }
 
-export interface ConformConfig {
+export interface ApplyMaskOptions {
   previousConformedValue?: string;
   guide?: boolean;
   placeholderChar?: string;
@@ -24,7 +29,7 @@ export interface ConformConfig {
   keepCharPositions?: boolean;
 }
 
-export interface CaretPositionConfig {
+export interface CaretAdjustConfig {
   previousConformedValue: string;
   previousPlaceholder: string;
   currentCaretPosition: number;
