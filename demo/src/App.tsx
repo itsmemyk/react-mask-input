@@ -28,11 +28,21 @@ const TABS = [
   {
     id: "date",
     label: "Date",
-    description: "Static mask — DD/MM/YYYY with keepCharPositions",
-    code: `const dateMask = useMemo(() => [
-  /\\d/, /\\d/, "/", /\\d/, /\\d/, "/",
-  /\\d/, /\\d/, /\\d/, /\\d/,
-], []);
+    description: "Dynamic mask — DD (01–31) / MM (01–12) / YYYY",
+    code: `const dateMask: MaskFactory = (value) => {
+  const digits = value.replace(/\\D/g, "");
+  const d1 = Number(digits[0] ?? 0);
+  const m1 = Number(digits[2] ?? 0);
+  return [
+    /[0-3]/,
+    d1 === 3 ? /[0-1]/ : /\\d/,
+    "/",
+    /[0-1]/,
+    m1 === 1 ? /[0-2]/ : /[1-9]/,
+    "/",
+    /\\d/, /\\d/, /\\d/, /\\d/,
+  ];
+};
 
 <MaskedInput
   mask={dateMask}
