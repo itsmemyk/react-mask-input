@@ -248,7 +248,8 @@ export function computeCaretPosition({
 
   const delta = rawValue.length - prevValue.length;
   const isAdding = delta > 0;
-  const isMultiDelete = delta < -1 && !isAdding && prevValue.length > 0;
+  const isMultiDelete =
+    !isAdding && Math.abs(delta) > 1 && prevValue.length > 0;
 
   if (isMultiDelete) return caretPos;
 
