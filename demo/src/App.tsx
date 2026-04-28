@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { PhoneExample } from "./examples/PhoneExample";
 import { DateExample } from "./examples/DateExample";
+import { TimeExample } from "./examples/TimeExample";
+import { DurationExample } from "./examples/DurationExample";
 import { CreditCardExample } from "./examples/CreditCardExample";
 import { DynamicMaskExample } from "./examples/DynamicMaskExample";
 import { MuiExample } from "./examples/MuiExample";
@@ -51,6 +53,50 @@ const TABS = [
   onChange={(e) => setValue(e.target.value)}
 />`,
     component: <DateExample />,
+  },
+  {
+    id: "time",
+    label: "Time",
+    description: "Dynamic mask — HH (00–23) : MM (00–59)",
+    code: `const timeMask: MaskFactory = (value) => {
+  const digits = value.replace(/\\D/g, "");
+  const h1 = Number(digits[0] ?? 0);
+  return [
+    /[0-2]/,
+    h1 === 2 ? /[0-3]/ : /\\d/,
+    ":",
+    /[0-5]/,
+    /\\d/,
+  ];
+};
+
+<MaskedInput
+  mask={timeMask}
+  value={value}
+  onChange={(e) => setValue(e.target.value)}
+  placeholder="HH:MM"
+/>`,
+    component: <TimeExample />,
+  },
+  {
+    id: "duration",
+    label: "Duration",
+    description: "Static mask — HH:MM:SS stopwatch format",
+    code: `const durationMask = useMemo(() => [
+  /\\d/, /\\d/,    // HH: 00–99
+  ":",
+  /[0-5]/, /\\d/, // MM: 00–59
+  ":",
+  /[0-5]/, /\\d/, // SS: 00–59
+], []);
+
+<MaskedInput
+  mask={durationMask}
+  value={value}
+  onChange={(e) => setValue(e.target.value)}
+  placeholder="HH:MM:SS"
+/>`,
+    component: <DurationExample />,
   },
   {
     id: "creditcard",
