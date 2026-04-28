@@ -1,0 +1,31 @@
+.rmi-input {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  padding: 0.375rem 0.75rem;
+  font-size: 1rem;
+  font-family: inherit;
+  line-height: 1.5;
+  color: inherit;
+  background-color: transparent;
+  border: 1px solid #ced4da;
+  border-radius: 0.375rem;
+  outline: none;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.rmi-input:focus {
+  border-color: #86b7fe;
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+.rmi-input::placeholder {
+  color: #adb5bd;
+  opacity: 1;
+}
+
+.rmi-input:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  background-color: #e9ecef;
+}
