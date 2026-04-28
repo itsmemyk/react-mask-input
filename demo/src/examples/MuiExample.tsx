@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { MaskedInput } from "@itsmemyk/react-mask-input";
+import { useMaskInput } from "@itsmemyk/react-mask-input";
 import OutlinedInput from "@mui/material/OutlinedInput";
 import InputAdornment from "@mui/material/InputAdornment";
 
@@ -26,15 +26,24 @@ export function MuiExample() {
     [],
   );
 
+  const { inputRef, maskedValue, onChange: handleMaskedChange } = useMaskInput(
+    value,
+    { mask: phoneMask },
+  );
+
   return (
     <div>
-      <MaskedInput
-        mask={phoneMask}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        inputComponent={OutlinedInput as React.ComponentType<React.InputHTMLAttributes<HTMLInputElement> & { ref?: React.Ref<HTMLInputElement | null> }>}
+      <OutlinedInput
+        inputRef={inputRef}
+        value={maskedValue}
+        onChange={(e) => {
+          handleMaskedChange(e);
+          setValue(e.target.value);
+        }}
         startAdornment={<InputAdornment position="start">📞</InputAdornment>}
         placeholder="(555) 000-0000"
+        size="small"
+        fullWidth
       />
       <p className="example-value">Value: <code>{JSON.stringify(value)}</code></p>
     </div>

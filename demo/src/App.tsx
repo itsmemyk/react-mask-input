@@ -87,14 +87,21 @@ const TABS = [
   {
     id: "mui",
     label: "MUI",
-    description: "Custom inputComponent — MUI OutlinedInput",
-    code: `import OutlinedInput from "@mui/material/OutlinedInput";
+    description: "Headless hook — MUI OutlinedInput",
+    code: `import { useMaskInput } from "@itsmemyk/react-mask-input";
+import OutlinedInput from "@mui/material/OutlinedInput";
 
-<MaskedInput
-  mask={phoneMask}
-  value={value}
-  onChange={(e) => setValue(e.target.value)}
-  inputComponent={OutlinedInput}
+const { inputRef, maskedValue, onChange } = useMaskInput(
+  value, { mask: phoneMask }
+);
+
+<OutlinedInput
+  inputRef={inputRef}
+  value={maskedValue}
+  onChange={(e) => {
+    onChange(e);
+    setValue(e.target.value);
+  }}
   startAdornment={
     <InputAdornment position="start">📞</InputAdornment>
   }

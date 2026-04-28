@@ -98,18 +98,36 @@ Pass `false` to render a plain unmasked input:
 
 ## Custom Input Component
 
-Use the `inputComponent` prop to integrate with any UI library that forwards refs and accepts standard HTML input attributes:
+The `inputComponent` prop works with thin `<input>` wrappers (e.g. shadcn/ui):
 
 ```tsx
-import OutlinedInput from "@mui/material/OutlinedInput";
-import InputAdornment from "@mui/material/InputAdornment";
+import { Input } from "@/components/ui/input"; // shadcn/ui
 import { MaskedInput } from "@itsmemyk/react-mask-input";
 
 <MaskedInput
   mask={phoneMask}
   value={value}
   onChange={(e) => setValue(e.target.value)}
-  inputComponent={OutlinedInput}
+  inputComponent={Input}
+/>
+```
+
+For complex component libraries like **MUI** that have their own internal input model, use the `useMaskInput` hook directly:
+
+```tsx
+import { useMaskInput } from "@itsmemyk/react-mask-input";
+import OutlinedInput from "@mui/material/OutlinedInput";
+import InputAdornment from "@mui/material/InputAdornment";
+
+const { inputRef, maskedValue, onChange } = useMaskInput(value, { mask: phoneMask });
+
+<OutlinedInput
+  inputRef={inputRef}
+  value={maskedValue}
+  onChange={(e) => {
+    onChange(e);
+    setValue(e.target.value);
+  }}
   startAdornment={<InputAdornment position="start">📞</InputAdornment>}
 />
 ```
