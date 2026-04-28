@@ -49,7 +49,7 @@ function PhoneInput() {
 | `placeholderChar` | `string` | `"_"` | Character for unfilled positions. Must not appear as a literal in the mask. |
 | `keepCharPositions` | `boolean` | `true` | Keep existing characters in place on insert/delete instead of shifting. |
 | `showMask` | `boolean \| undefined` | `undefined` | `true` = always show mask, `false` = always hide, `undefined` = show on focus / hide on blur. |
-| `inputComponent` | `InputComponent` | — | Custom input component (MUI, shadcn/ui, etc.). Must forward a ref and accept standard HTML input attributes. |
+| `inputComponent` | `InputComponent` | — | Custom input component (MUI, shadcn/ui, etc.). Must accept standard HTML input attributes and expose the underlying input through `ref` or `inputRef`. |
 
 All standard HTML `<input>` attributes (`className`, `style`, `disabled`, `placeholder`, etc.) are forwarded.
 
@@ -98,7 +98,7 @@ Pass `false` to render a plain unmasked input:
 
 ## Custom Input Component
 
-The `inputComponent` prop works with thin `<input>` wrappers (e.g. shadcn/ui):
+The `inputComponent` prop works with thin wrappers and components that expose the real input through `ref` or `inputRef`:
 
 ```tsx
 import { Input } from "@/components/ui/input"; // shadcn/ui
@@ -112,7 +112,7 @@ import { MaskedInput } from "@itsmemyk/react-mask-input";
 />
 ```
 
-For complex component libraries like **MUI** that have their own internal input model, use the `useMaskInput` hook directly:
+Example with **MUI**:
 
 ```tsx
 import { useMaskInput } from "@itsmemyk/react-mask-input";

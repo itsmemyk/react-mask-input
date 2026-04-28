@@ -15,6 +15,7 @@ import { DEFAULT_PLACEHOLDER_CHAR, Mask } from "./types";
 
 export type InputComponentProps = InputHTMLAttributes<HTMLInputElement> & {
   ref?: React.Ref<HTMLInputElement | null>;
+  inputRef?: React.Ref<HTMLInputElement | null>;
 };
 
 export type InputComponent = React.ComponentType<InputComponentProps>;
@@ -61,8 +62,9 @@ export interface MaskedInputOwnProps {
 
   /**
    * Custom input component to render instead of the built-in `<input>`.
-   * Must accept standard HTML input attributes and forward a ref to an
-   * `HTMLInputElement`. Use this to integrate with MUI, shadcn/ui, etc.
+   * Must accept standard HTML input attributes and expose the underlying
+   * `HTMLInputElement` through either `ref` or `inputRef`.
+   * Use this to integrate with MUI, shadcn/ui, etc.
    *
    * @example
    * // MUI
@@ -103,6 +105,7 @@ export const MaskedInput = React.forwardRef<
     showMask: showMaskProp,
     inputComponent: InputComponent,
     value,
+    defaultValue,
     onBlur,
     onChange,
     onFocus,
@@ -115,6 +118,7 @@ export const MaskedInput = React.forwardRef<
   const frameRef = useRef<number>(0);
   const mountedRef = useRef(true);
   const [showMaskState, setShowMaskState] = useState(false);
+  const isControlled = value !== undefined;
   const isShowMaskControlled = showMaskProp !== undefined;
   const showMask = isShowMaskControlled ? !!showMaskProp : showMaskState;
 
@@ -128,6 +132,8 @@ export const MaskedInput = React.forwardRef<
     placeholderChar,
     keepCharPositions,
     showMask,
+    controlled: isControlled,
+    initialValue: defaultValue as string | number | null | undefined,
   });
 
   useEffect(() => {
@@ -198,8 +204,6 @@ export const MaskedInput = React.forwardRef<
 
   const sharedProps = {
     ...rest,
-    ref: composedRef,
-    value: maskedValue,
     style,
     onKeyDown: handleKeyDown,
     onFocus: handleFocus,
@@ -208,12 +212,26 @@ export const MaskedInput = React.forwardRef<
   };
 
   if (InputComponent) {
-    return <InputComponent {...sharedProps} className={className} />;
+    return (
+      <InputComponent
+        {...sharedProps}
+        {...(isControlled
+          ? { value: maskedValue }
+          : { defaultValue: maskedValue })}
+        ref={composedRef}
+        inputRef={composedRef}
+        className={className}
+      />
+    );
   }
 
   return (
     <input
       {...sharedProps}
+      {...(isControlled
+        ? { value: maskedValue }
+        : { defaultValue: maskedValue })}
+      ref={composedRef}
       className={`rmi-input${className ? ` ${className}` : ""}`}
     />
   );

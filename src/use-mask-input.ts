@@ -21,6 +21,8 @@ export interface MaskInputConfig {
   placeholderChar?: string;
   keepCharPositions?: boolean;
   showMask?: boolean;
+  controlled?: boolean;
+  initialValue?: string | number | null;
 }
 
 const isAndroid =
@@ -49,28 +51,100 @@ interface MaskState {
   lastShowMask: boolean | undefined;
 }
 
+function resolveMaskedState(
+  incoming: string | number | null | undefined,
+  previousState: MaskState,
+  config: MaskInputConfig,
+  selectionPos?: number,
+) {
+  const {
+    mask,
+    guide = true,
+    placeholderChar = DEFAULT_PLACEHOLDER_CHAR,
+    keepCharPositions,
+    showMask,
+  } = config;
+
+  const rawStr = toInputString(incoming);
+  const caretPos = selectionPos ?? rawStr.length;
+  const resolvedPattern = resolveMaskPattern(mask, rawStr, {
+    currentCaretPosition: caretPos,
+    previousConformedValue: previousState.lastConformedValue,
+    placeholderChar,
+  });
+
+  if (resolvedPattern === false) {
+    return {
+      displayValue: rawStr,
+      placeholder: "",
+      nextCaret: caretPos,
+    };
+  }
+
+  const placeholder = buildPlaceholder(resolvedPattern, placeholderChar);
+  const conformed = applyMask(rawStr, resolvedPattern, {
+    previousConformedValue: previousState.lastConformedValue,
+    guide,
+    placeholderChar,
+    placeholder,
+    currentCaretPosition: caretPos,
+    keepCharPositions,
+  });
+
+  const nextCaret = computeCaretPosition({
+    previousConformedValue: previousState.lastConformedValue,
+    previousPlaceholder: previousState.lastPlaceholder,
+    conformedValue: conformed,
+    placeholder,
+    rawValue: rawStr,
+    currentCaretPosition: caretPos,
+    placeholderChar,
+  });
+
+  const isEmpty = conformed === placeholder && nextCaret === 0;
+
+  return {
+    displayValue: isEmpty ? (showMask ? placeholder : "") : conformed,
+    placeholder,
+    nextCaret,
+  };
+}
+
 export function useMaskInput(
   value: string | number | null | undefined,
   config: MaskInputConfig,
 ) {
-  const { mask, guide = true, placeholderChar = DEFAULT_PLACEHOLDER_CHAR, keepCharPositions, showMask } = config;
+  const {
+    mask,
+    guide = true,
+    placeholderChar = DEFAULT_PLACEHOLDER_CHAR,
+    keepCharPositions,
+    showMask,
+    controlled = true,
+    initialValue,
+  } = config;
 
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [displayValue, setDisplayValue] = useState("");
+
+  const [displayValue, setDisplayValue] = useState(() => {
+    const s: MaskState = { lastConformedValue: "", lastPlaceholder: "", lastShowMask: showMask };
+    return resolveMaskedState(value ?? initialValue, s, config).displayValue;
+  });
   const [syncToken, setSyncToken] = useState(0);
   const pendingCaret = useRef(0);
 
-  const stateRef = useRef<MaskState>({
-    lastConformedValue: "",
-    lastPlaceholder: "",
-    lastShowMask: showMask,
-  });
+  const stateRef = useRef<MaskState | null>(null);
+  if (stateRef.current === null) {
+    const s: MaskState = { lastConformedValue: "", lastPlaceholder: "", lastShowMask: showMask };
+    const init = resolveMaskedState(value ?? initialValue, s, config);
+    stateRef.current = { lastConformedValue: init.displayValue, lastPlaceholder: init.placeholder, lastShowMask: showMask };
+  }
 
   const processValue = useCallback(
     (incoming?: string | number | null) => {
       const el = inputRef.current;
       const raw = incoming === undefined ? (el?.value ?? "") : incoming;
-      const state = stateRef.current;
+      const state = stateRef.current!;
 
       const showMaskChanged = showMask !== state.lastShowMask;
       if (raw === state.lastConformedValue && !showMaskChanged) return;
@@ -78,48 +152,24 @@ export function useMaskInput(
 
       const rawStr = toInputString(raw);
       const selectionPos = el?.selectionEnd ?? rawStr.length;
+      const nextState = resolveMaskedState(
+        rawStr,
+        state,
+        {
+          mask,
+          guide,
+          placeholderChar,
+          keepCharPositions,
+          showMask,
+        },
+        selectionPos,
+      );
 
-      const resolvedPattern = resolveMaskPattern(mask, rawStr, {
-        currentCaretPosition: selectionPos,
-        previousConformedValue: state.lastConformedValue,
-        placeholderChar,
-      });
+      state.lastConformedValue = nextState.displayValue;
+      state.lastPlaceholder = nextState.placeholder;
 
-      if (resolvedPattern === false) {
-        state.lastConformedValue = rawStr;
-        setDisplayValue(rawStr);
-        return;
-      }
-
-      const placeholder = buildPlaceholder(resolvedPattern, placeholderChar);
-
-      const conformed = applyMask(rawStr, resolvedPattern, {
-        previousConformedValue: state.lastConformedValue,
-        guide,
-        placeholderChar,
-        placeholder,
-        currentCaretPosition: selectionPos,
-        keepCharPositions,
-      });
-
-      const nextCaret = computeCaretPosition({
-        previousConformedValue: state.lastConformedValue,
-        previousPlaceholder: state.lastPlaceholder,
-        conformedValue: conformed,
-        placeholder,
-        rawValue: rawStr,
-        currentCaretPosition: selectionPos,
-        placeholderChar,
-      });
-
-      const isEmpty = conformed === placeholder && nextCaret === 0;
-      const shown = isEmpty ? (showMask ? placeholder : "") : conformed;
-
-      state.lastConformedValue = shown;
-      state.lastPlaceholder = placeholder;
-
-      setDisplayValue(shown);
-      pendingCaret.current = nextCaret;
+      setDisplayValue(nextState.displayValue);
+      pendingCaret.current = nextState.nextCaret;
       setSyncToken((t) => t + 1);
     },
     [mask, guide, placeholderChar, keepCharPositions, showMask],
@@ -131,13 +181,21 @@ export function useMaskInput(
   }, [syncToken]);
 
   useLayoutEffect(() => {
+    if (controlled) return;
+    const el = inputRef.current;
+    if (el && el.value !== displayValue) {
+      el.value = displayValue;
+    }
+  }, [controlled, displayValue]);
+
+  useLayoutEffect(() => {
     processValue(value);
   }, [processValue, value]);
 
   const onChange = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
       processValue(e.target.value);
-      e.target.value = stateRef.current.lastConformedValue;
+      e.target.value = stateRef.current!.lastConformedValue;
     },
     [processValue],
   );
