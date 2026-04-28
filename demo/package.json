@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react-mask-input": "file:..",
+    "@itsmemyk/react-mask-input": "file:..",
     "@mui/material": "^5.16.7",
     "@emotion/react": "^11.13.3",
     "@emotion/styled": "^11.13.0"

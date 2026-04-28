@@ -113,12 +113,12 @@ export default function App() {
         <div className="app-header-inner">
           <div className="app-logo">🎭</div>
           <div>
-            <h1>react-mask-input</h1>
+            <h1>@itsmemyk/react-mask-input</h1>
             <p>A lightweight React masked input component with static &amp; dynamic mask support</p>
           </div>
           <div className="app-badges">
             <a
-              href="https://www.npmjs.com/package/react-mask-input"
+              href="https://www.npmjs.com/package/@itsmemyk/react-mask-input"
               target="_blank"
               rel="noopener noreferrer"
               className="badge"
@@ -126,7 +126,7 @@ export default function App() {
               npm
             </a>
             <a
-              href="https://github.com/mahadevwala/react-mask-input"
+              href="https://github.com/itsmemyk/react-mask-input"
               target="_blank"
               rel="noopener noreferrer"
               className="badge badge-secondary"
@@ -139,7 +139,7 @@ export default function App() {
 
       <main className="app-main">
         <section className="install-section">
-          <code className="install-cmd">npm install react-mask-input</code>
+          <code className="install-cmd">npm install @itsmemyk/react-mask-input</code>
         </section>
 
         <section className="demo-section">

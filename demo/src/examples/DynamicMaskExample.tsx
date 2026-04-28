@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MaskedInput, MaskFunction } from "react-mask-input";
+import { MaskedInput, MaskFunction } from "@itsmemyk/react-mask-input";
 
 // Amex starts with 34 or 37 → 15 digits formatted as XXXX XXXXXX XXXXX
 // All others → 16 digits formatted as XXXX XXXX XXXX XXXX

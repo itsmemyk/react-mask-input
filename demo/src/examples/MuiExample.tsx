@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { MaskedInput } from "react-mask-input";
+import { MaskedInput } from "@itsmemyk/react-mask-input";
 import OutlinedInput from "@mui/material/OutlinedInput";
 import InputAdornment from "@mui/material/InputAdornment";
 

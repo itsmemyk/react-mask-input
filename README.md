@@ -1,25 +1,25 @@
-# react-mask-input
+# @itsmemyk/react-mask-input
 
 A lightweight React masked input component with static & dynamic mask support, guide mode, caret management, and a headless `useMaskInput` hook. Zero runtime dependencies.
 
 ## Installation
 
 ```bash
-npm install react-mask-input
+npm install @itsmemyk/react-mask-input
 ```
 
 Import the default styles (optional — skip if you supply your own):
 
 ```ts
-import "react-mask-input/style";
+import "@itsmemyk/react-mask-input/style";
 ```
 
 ## Quick Start
 
 ```tsx
 import { useMemo, useState } from "react";
-import { MaskedInput } from "react-mask-input";
-import "react-mask-input/style";
+import { MaskedInput } from "@itsmemyk/react-mask-input";
+import "@itsmemyk/react-mask-input/style";
 
 function PhoneInput() {
   const [value, setValue] = useState("");
@@ -44,7 +44,7 @@ function PhoneInput() {
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `mask` | `MaskArray \| MaskFunction \| false` | — | **Required.** The mask pattern (see below). |
+| `mask` | `MaskPattern \| MaskFactory \| false` | — | **Required.** The mask pattern (see below). |
 | `guide` | `boolean` | `true` | Show placeholder characters for unfilled slots. |
 | `placeholderChar` | `string` | `"_"` | Character for unfilled positions. Must not appear as a literal in the mask. |
 | `keepCharPositions` | `boolean` | `true` | Keep existing characters in place on insert/delete instead of shifting. |
@@ -74,9 +74,9 @@ const dateMask = useMemo(
 Return a different mask array based on the current value:
 
 ```tsx
-import { MaskFunction } from "react-mask-input";
+import { MaskFactory } from "@itsmemyk/react-mask-input";
 
-const cardMask: MaskFunction = (rawValue) => {
+const cardMask: MaskFactory = (rawValue) => {
   const digits = rawValue.replace(/\D/g, "");
   const isAmex = digits.startsWith("34") || digits.startsWith("37");
   if (isAmex) {
@@ -103,6 +103,7 @@ Use the `inputComponent` prop to integrate with any UI library that forwards ref
 ```tsx
 import OutlinedInput from "@mui/material/OutlinedInput";
 import InputAdornment from "@mui/material/InputAdornment";
+import { MaskedInput } from "@itsmemyk/react-mask-input";
 
 <MaskedInput
   mask={phoneMask}
@@ -118,8 +119,7 @@ import InputAdornment from "@mui/material/InputAdornment";
 Use `useMaskInput` to attach masking to any custom input element:
 
 ```tsx
-import { useRef } from "react";
-import { useMaskInput } from "react-mask-input";
+import { useMaskInput } from "@itsmemyk/react-mask-input";
 
 function MyInput({ mask, value, onChange }) {
   const { inputRef, maskedValue, onChange: handleChange } = useMaskInput(value, {
@@ -159,7 +159,7 @@ Returns `{ inputRef, maskedValue, onChange }`.
 Import once in your app entry:
 
 ```ts
-import "react-mask-input/style";
+import "@itsmemyk/react-mask-input/style";
 ```
 
 The default styles are scoped to the `.rmi-input` class (applied only on the built-in `<input>`, not when using `inputComponent`).
@@ -188,14 +188,16 @@ All types are exported:
 import type {
   Mask,
   MaskArray,
+  MaskPattern,
+  MaskFactory,
   MaskFunction,
-  MaskFunctionConfig,
+  MaskFactoryContext,
   MaskInputConfig,
   MaskedInputProps,
   InputComponent,
-} from "react-mask-input";
+} from "@itsmemyk/react-mask-input";
 ```
 
 ## License
 
-MIT
+MIT © [Mayank Mahadevwala](https://github.com/itsmemyk)

@@ -1,5 +1,5 @@
 {
-  "name": "react-mask-input",
+  "name": "@itsmemyk/react-mask-input",
   "version": "0.1.0",
   "description": "A lightweight React masked input component with static & dynamic mask support and a headless useMaskInput hook. Zero runtime dependencies.",
   "license": "MIT",
